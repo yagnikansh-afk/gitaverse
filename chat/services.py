@@ -18,16 +18,6 @@ EMBEDDING_DIMENSIONS = 768
 # ============================================================
 # LIFE TOPICS
 # ============================================================
-#
-# These are NOT used as the main retrieval system.
-#
-# Semantic similarity still searches all 701 shlokas.
-# These mappings only provide a small relevance boost when
-# the user's situation clearly matches a known life topic.
-#
-# This helps prevent loosely related verses from beating
-# highly useful teachings.
-# ============================================================
 
 LIFE_TOPICS = {
 
@@ -199,8 +189,6 @@ LIFE_TOPICS = {
 def cosine_similarity(vector_a, vector_b):
     """
     Calculate semantic similarity between two vectors.
-
-    Higher score means the vectors are more similar.
     """
 
     if not vector_a or not vector_b:
@@ -211,18 +199,30 @@ def cosine_similarity(vector_a, vector_b):
 
     dot_product = sum(
         a * b
-        for a, b in zip(vector_a, vector_b)
+        for a, b in zip(
+            vector_a,
+            vector_b
+        )
     )
 
     magnitude_a = math.sqrt(
-        sum(a * a for a in vector_a)
+        sum(
+            a * a
+            for a in vector_a
+        )
     )
 
     magnitude_b = math.sqrt(
-        sum(b * b for b in vector_b)
+        sum(
+            b * b
+            for b in vector_b
+        )
     )
 
-    if magnitude_a == 0 or magnitude_b == 0:
+    if (
+        magnitude_a == 0
+        or magnitude_b == 0
+    ):
         return 0.0
 
     return (
@@ -238,11 +238,12 @@ def cosine_similarity(vector_a, vector_b):
 
 def generate_query_embedding(message):
     """
-    Convert the user's message into a 768-dimensional
-    retrieval-query embedding.
+    Convert the retrieval query into a
+    768-dimensional embedding.
     """
 
     if not settings.GEMINI_API_KEY:
+
         raise ValueError(
             "GEMINI_API_KEY is not configured."
         )
@@ -253,32 +254,113 @@ def generate_query_embedding(message):
 
     response = client.models.embed_content(
         model=MODEL_NAME,
+
         contents=message,
+
         config=types.EmbedContentConfig(
             task_type="RETRIEVAL_QUERY",
-            output_dimensionality=EMBEDDING_DIMENSIONS,
+            output_dimensionality=(
+                EMBEDDING_DIMENSIONS
+            ),
         ),
     )
 
     if not response.embeddings:
+
         raise ValueError(
             "Gemini returned no query embedding."
         )
 
-    embedding = response.embeddings[0].values
+    embedding = (
+        response.embeddings[0].values
+    )
 
     if not embedding:
+
         raise ValueError(
             "Gemini returned an empty query embedding."
         )
 
     if len(embedding) != EMBEDDING_DIMENSIONS:
+
         raise ValueError(
-            f"Expected {EMBEDDING_DIMENSIONS} dimensions "
-            f"but received {len(embedding)}."
+            f"Expected {EMBEDDING_DIMENSIONS} "
+            f"dimensions but received "
+            f"{len(embedding)}."
         )
 
     return list(embedding)
+
+
+# ============================================================
+# BUILD RETRIEVAL QUERY
+# ============================================================
+
+def build_retrieval_query(
+    message,
+    conversation_history=None
+):
+    """
+    Build a context-aware retrieval query.
+
+    The current message gets the strongest emphasis,
+    while recent conversation history provides context
+    for short follow-up questions.
+    """
+
+    if not conversation_history:
+
+        return message.strip()
+
+    history_parts = []
+
+    # Use only the latest few messages so the embedding
+    # query doesn't become unnecessarily large.
+    recent_history = (
+        conversation_history[-6:]
+    )
+
+    for item in recent_history:
+
+        role = item.get(
+            "role",
+            ""
+        )
+
+        content = item.get(
+            "content",
+            ""
+        ).strip()
+
+        if not content:
+            continue
+
+        if role == "user":
+
+            history_parts.append(
+                f"User previously said: {content}"
+            )
+
+        elif role == "assistant":
+
+            # We include a small amount of AI context,
+            # but avoid allowing the AI's previous answer
+            # to dominate retrieval.
+            history_parts.append(
+                f"Previous guidance: {content}"
+            )
+
+    if not history_parts:
+
+        return message.strip()
+
+    return (
+        "Previous conversation context:\n"
+        + "\n".join(history_parts)
+        + "\n\n"
+        + "Current user question:\n"
+        + message.strip()
+    )
 
 
 # ============================================================
@@ -287,17 +369,19 @@ def generate_query_embedding(message):
 
 def detect_topics(message):
     """
-    Detect obvious life situations in the user's message.
+    Detect obvious life situations.
 
-    Semantic search still does the actual retrieval.
-    Topics only influence re-ranking.
+    These topics influence re-ranking only.
+    Semantic retrieval remains the main mechanism.
     """
 
     message_lower = message.lower()
 
     detected_topics = []
 
-    for topic_name, topic_data in LIFE_TOPICS.items():
+    for topic_name, topic_data in (
+        LIFE_TOPICS.items()
+    ):
 
         for keyword in topic_data["keywords"]:
 
@@ -322,9 +406,6 @@ def calculate_topic_boost(
 ):
     """
     Give known highly relevant verses a small boost.
-
-    We deliberately keep this small so semantic similarity
-    remains important.
     """
 
     boost = 0.0
@@ -344,11 +425,13 @@ def calculate_topic_boost(
             continue
 
         if verse_key in topic_data["verses"]:
+
             boost += 0.12
 
-    # Prevent several detected topics from creating an
-    # excessively large artificial score.
-    return min(boost, 0.24)
+    return min(
+        boost,
+        0.24
+    )
 
 
 # ============================================================
@@ -357,18 +440,40 @@ def calculate_topic_boost(
 
 def find_relevant_shlokas(
     message,
-    limit=3
+    limit=3,
+    conversation_history=None
 ):
     """
-    Hybrid Bhagavad Gita retrieval.
+    Hybrid, conversation-aware Bhagavad Gita retrieval.
 
-    1. Understand user's message using an embedding.
-    2. Compare it against all stored shloka embeddings.
-    3. Detect obvious life topics.
-    4. Give strongly related verses a small topic boost.
-    5. Rank everything.
-    6. Return the best verses.
+    Steps:
+
+    1. Build a retrieval query using the current message
+       plus recent conversation context.
+
+    2. Generate a semantic embedding.
+
+    3. Compare it against all stored shloka embeddings.
+
+    4. Detect life topics from the combined context.
+
+    5. Apply a small topic boost.
+
+    6. Rank all shlokas.
+
+    7. Return the best results.
     """
+
+    # --------------------------------------------------------
+    # BUILD CONTEXT-AWARE QUERY
+    # --------------------------------------------------------
+
+    retrieval_query = (
+        build_retrieval_query(
+            message,
+            conversation_history
+        )
+    )
 
     # --------------------------------------------------------
     # QUERY EMBEDDING
@@ -376,7 +481,7 @@ def find_relevant_shlokas(
 
     query_embedding = (
         generate_query_embedding(
-            message
+            retrieval_query
         )
     )
 
@@ -385,7 +490,7 @@ def find_relevant_shlokas(
     # --------------------------------------------------------
 
     detected_topics = detect_topics(
-        message
+        retrieval_query
     )
 
     # --------------------------------------------------------
@@ -412,14 +517,18 @@ def find_relevant_shlokas(
         if not shloka.embedding:
             continue
 
-        semantic_score = cosine_similarity(
-            query_embedding,
-            shloka.embedding
+        semantic_score = (
+            cosine_similarity(
+                query_embedding,
+                shloka.embedding
+            )
         )
 
-        topic_boost = calculate_topic_boost(
-            shloka,
-            detected_topics
+        topic_boost = (
+            calculate_topic_boost(
+                shloka,
+                detected_topics
+            )
         )
 
         final_score = (
@@ -430,7 +539,8 @@ def find_relevant_shlokas(
 
         scored_shlokas.append(
             {
-                "shloka": shloka,
+                "shloka":
+                    shloka,
 
                 "semantic_score":
                     semantic_score,

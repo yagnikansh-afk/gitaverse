@@ -42,7 +42,7 @@ class ChatView(APIView):
         )
 
         # ==================================================
-        # FIND EXISTING CONVERSATION
+        # EXISTING CONVERSATION
         # ==================================================
 
         if conversation_id:
@@ -67,7 +67,7 @@ class ChatView(APIView):
                 )
 
         # ==================================================
-        # CREATE NEW CONVERSATION
+        # NEW CONVERSATION
         # ==================================================
 
         else:
@@ -104,7 +104,7 @@ class ChatView(APIView):
             .order_by("created_at")
         )
 
-        # Keep only the latest 10 messages.
+        # Keep the latest 10 messages.
         previous_messages = list(
             previous_messages
         )[-10:]
@@ -130,7 +130,8 @@ class ChatView(APIView):
         relevant_shlokas = (
             find_relevant_shlokas(
                 message_text,
-                limit=3
+                limit=3,
+                conversation_history=conversation_history
             )
         )
 
