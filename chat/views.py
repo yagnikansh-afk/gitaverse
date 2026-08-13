@@ -104,13 +104,7 @@ class ChatView(APIView):
             .order_by("created_at")
         )
 
-        # --------------------------------------------------
-        # Keep the most recent messages.
-        #
-        # This prevents the prompt from becoming enormous
-        # when a conversation gets very long.
-        # --------------------------------------------------
-
+        # Keep only the latest 10 messages.
         previous_messages = list(
             previous_messages
         )[-10:]
