@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.conf import settings
 from django.db.models import Q
 
@@ -115,6 +117,7 @@ class GitaSearchView(ListAPIView):
         )
 
         if not query:
+
             return Shloka.objects.none()
 
         return (
@@ -512,6 +515,80 @@ Always finish with the Reflection section.
 
                 "answer":
                     answer,
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+# ============================================================
+# DAILY SHLOKA
+# ============================================================
+
+class DailyShlokaView(RetrieveAPIView):
+
+    serializer_class = ShlokaSerializer
+
+    def get_object(self):
+
+        total_shlokas = (
+            Shloka.objects.count()
+        )
+
+        if total_shlokas == 0:
+
+            raise Shloka.DoesNotExist
+
+        # Day of the year:
+        # January 1 = 1
+        # January 2 = 2
+        # etc.
+        day_number = (
+            date.today()
+            .timetuple()
+            .tm_yday
+        )
+
+        # Convert the day number into a
+        # zero-based database index.
+        index = (
+            (day_number - 1)
+            % total_shlokas
+        )
+
+        return (
+            Shloka.objects
+            .select_related("chapter")
+            .prefetch_related("translations")
+            .order_by(
+                "chapter__number",
+                "verse_number"
+            )[index]
+        )
+
+    def retrieve(
+        self,
+        request,
+        *args,
+        **kwargs
+    ):
+
+        shloka = self.get_object()
+
+        data = (
+            self.get_serializer(
+                shloka
+            ).data
+        )
+
+        return Response(
+            {
+                "date":
+                    date.today().isoformat(),
+
+                "title":
+                    "Today's Shloka",
+
+                **data,
             },
             status=status.HTTP_200_OK
         )

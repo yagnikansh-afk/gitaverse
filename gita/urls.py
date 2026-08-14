@@ -7,6 +7,7 @@ from .views import (
     ShlokaDetailView,
     GitaSearchView,
     ShlokaAskView,
+    DailyShlokaView,
 )
 
 
@@ -62,6 +63,18 @@ urlpatterns = [
         "shlokas/<int:chapter_number>/<int:verse_number>/ask/",
         ShlokaAskView.as_view(),
         name="shloka-ask"
+    ),
+
+    # ========================================================
+    # DAILY SHLOKA
+    # ========================================================
+
+    # Get today's Bhagavad Gita shloka
+    # GET /api/gita/daily/
+    path(
+        "daily/",
+        DailyShlokaView.as_view(),
+        name="daily-shloka"
     ),
 
     # ========================================================
