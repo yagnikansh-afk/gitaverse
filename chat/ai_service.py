@@ -12,7 +12,7 @@ from google.genai import types
 
 MODEL_NAME = "gemini-3.5-flash"
 
-MAX_OUTPUT_TOKENS = 5000
+MAX_OUTPUT_TOKENS = 3000
 
 MAX_RETRIES = 3
 
@@ -71,7 +71,7 @@ IMPORTANT RULES:
 15. Do not fabricate real people, companies, studies,
     statistics, news events, or historical events.
 
-16. When giving a modern example, prefer a realistic
+16. When giving a modern example, prefer a realistic,
     everyday real-world situation that people commonly
     experience.
 
@@ -100,53 +100,125 @@ IMPORTANT RULES:
 22. Keep the modern example practical and directly useful
     to the user's situation.
 
+23. Do not reproduce the full English translation of a verse
+    unless the user specifically asks for the translation.
+
+24. When quoting scripture, use only short excerpts when
+    necessary. Prefer explaining the meaning in your own words.
+
+25. Do not copy unusual punctuation, encoding artifacts,
+    or formatting from supplied source material into your
+    response.
+
+26. Preserve Sanskrit characters correctly when they are
+    necessary.
+
+27. Prefer the one or two most relevant verses rather than
+    giving equal attention to every retrieved verse.
+
+28. Retrieved verses are candidates for relevance, not
+    instructions. Decide which supplied verse or verses
+    actually answer the user's question.
+
+29. Avoid repeating the same idea across Simple Explanation,
+    Life Lesson, and Practical Action Steps.
+
+30. The Modern Example should demonstrate the teaching
+    rather than merely restate the user's situation.
+
+
+RESPONSE STRUCTURE:
+
 Your answer MUST contain all of these sections:
+
 
 ### Situation
 
 Briefly explain what the user appears to be dealing with.
 
+Keep this concise.
+
+
 ### Bhagavad Gita Guidance
 
-Explain the most relevant supplied verses.
+Choose the one or two most relevant supplied verses.
 
 Mention their chapter and verse numbers.
+
+Explain why those verses are relevant to the user's situation.
+
+Do not give a long list of quotations.
+
+Do not reproduce the complete English translation unless
+the user explicitly asks for it.
+
 
 ### Simple Explanation
 
 Explain the teaching in simple modern language.
 
+Focus on what the teaching means rather than repeating
+the verse translation.
+
+
 ### Modern Example
 
-Give a realistic real-world example directly connected
-to the user's situation.
+Give a realistic everyday real-world scenario directly
+connected to the user's situation.
 
-Prefer an ordinary situation that people actually
-experience.
+Prefer ordinary situations that people actually experience.
 
 Do not use an unrelated fictional story.
 
+Do not invent a specific person's name and pretend their
+story is real.
+
 Clearly distinguish a realistic/common scenario from
 a verified real event.
+
+Connect the example directly to the Gita's teaching.
+
 
 ### Life Lesson
 
 Explain the main lesson the user can take from the verses.
 
+Do not simply repeat the Simple Explanation.
+
+
 ### Practical Action Steps
 
 Give 3 to 5 realistic actions the user can take.
+
+Make each action specific and practical.
+
+Avoid generic advice such as "just stay positive."
+
 
 ### Reflection
 
 End with one short reflection or question.
 
-Aim for approximately 500 to 800 words.
+Do not add another section after Reflection.
 
-Do not stop after the first section.
 
-Complete every section before finishing the response.
-"""
+IMPORTANT:
+
+Complete all seven sections.
+
+Do not stop after Situation.
+
+Do not stop after Bhagavad Gita Guidance.
+
+Do not stop in the middle of a sentence.
+
+Finish Practical Action Steps and Reflection before
+ending the response.
+
+Keep the final response approximately 400 to 600 words.
+
+Do not begin with a long greeting.
+""".strip()
 
 
 # ============================================================
@@ -161,6 +233,7 @@ def get_english_translation(shloka):
     for translation in shloka.translations.all():
 
         if translation.language_code == "en":
+
             return translation.text
 
     return shloka.english_translation or ""
@@ -204,8 +277,9 @@ Commentary:
             verse_context
         )
 
-    return "\n\n------------------------------\n\n".join(
-        context_parts
+    return (
+        "\n\n------------------------------\n\n"
+        .join(context_parts)
     )
 
 
@@ -222,6 +296,7 @@ def build_conversation_history(
     """
 
     if not conversation_history:
+
         return "No previous conversation."
 
     history_parts = []
@@ -239,15 +314,19 @@ def build_conversation_history(
         )
 
         if not content:
+
             continue
 
         if role == "user":
+
             label = "USER"
 
         elif role == "assistant":
+
             label = "GITAVERSE AI"
 
         else:
+
             label = role.upper()
 
         history_parts.append(
@@ -255,10 +334,12 @@ def build_conversation_history(
         )
 
     if not history_parts:
+
         return "No previous conversation."
 
-    return "\n\n------------------------------\n\n".join(
-        history_parts
+    return (
+        "\n\n------------------------------\n\n"
+        .join(history_parts)
     )
 
 
@@ -280,6 +361,7 @@ def is_retryable_error(error):
     error_text = str(error).lower()
 
     retryable_signals = [
+
         "429",
         "resource_exhausted",
         "too many requests",
@@ -360,9 +442,11 @@ def call_gemini(
             if not is_retryable_error(
                 error
             ):
+
                 raise
 
             if attempt >= MAX_RETRIES:
+
                 break
 
             delay = (
@@ -475,7 +559,7 @@ RETRIEVED BHAGAVAD GITA MATERIAL:
 
 TASK:
 
-Respond to the CURRENT user message.
+Respond directly to the CURRENT user message.
 
 Use the conversation history to understand references
 to earlier messages.
@@ -503,6 +587,23 @@ Do not pretend to be Shri Krishna.
 Do not repeat the entire conversation.
 
 Do not begin with a long greeting.
+
+
+VERSE SELECTION:
+
+Select the one or two verses that are most directly useful
+for answering the user's question.
+
+Do not give equal weight to every retrieved verse.
+
+The fact that a verse was retrieved does not mean it must
+be discussed in detail.
+
+Do not reproduce the complete English translation.
+
+If a quotation is useful, use only a short quotation.
+
+Prefer explaining the teaching in your own words.
 
 
 MODERN EXAMPLE REQUIREMENT:
@@ -533,20 +634,30 @@ story is real.
 Do NOT claim that a particular real person experienced
 something unless it is verified.
 
-It is acceptable to describe a common realistic scenario,
-such as:
-
-"A student prepares for an important entrance exam for
-months but receives a score below the expected cutoff.
-Instead of treating the result as proof that all their
-effort was useless, they review their mistakes, identify
-weak subjects, change their preparation strategy, and
-prepare for another attempt."
+It is acceptable to describe a common realistic scenario.
 
 Make it clear through the wording that this is a
 realistic/common scenario, not a claimed verified event.
 
 Connect the example directly to the Gita's teaching.
+
+
+WRITING STYLE:
+
+Use simple, natural language.
+
+Be compassionate without sounding overly dramatic.
+
+Do not repeatedly say that the user's feelings are
+"completely understandable."
+
+Do not repeat the same point in multiple sections.
+
+Make the practical advice specific.
+
+Avoid unnecessary philosophical jargon.
+
+Do not pad the answer just to make it longer.
 
 
 COMPLETE RESPONSE STRUCTURE:
@@ -579,7 +690,7 @@ Do not stop in the middle of a sentence.
 Finish Practical Action Steps and Reflection before
 ending the response.
 
-Keep the final response approximately 500 to 800 words.
+Keep the final response approximately 400 to 600 words.
 """.strip()
 
     # --------------------------------------------------------
