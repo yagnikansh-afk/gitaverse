@@ -565,6 +565,184 @@ class DailyShlokaView(RetrieveAPIView):
             )[index]
         )
 
+    # ========================================================
+    # GET ENGLISH TRANSLATION
+    # ========================================================
+
+    def get_english_translation(
+        self,
+        shloka
+    ):
+
+        for translation in (
+            shloka.translations.all()
+        ):
+
+            if (
+                translation.language_code
+                == "en"
+            ):
+
+                return translation.text
+
+        return (
+            shloka.english_translation
+            or ""
+        )
+
+    # ========================================================
+    # GENERATE DAILY AI INSIGHT
+    # ========================================================
+
+    def generate_daily_insight(
+        self,
+        shloka,
+        english_translation
+    ):
+
+        if not settings.GEMINI_API_KEY:
+
+            raise ValueError(
+                "GEMINI_API_KEY is not configured."
+            )
+
+        client = genai.Client(
+            api_key=settings.GEMINI_API_KEY
+        )
+
+        prompt = f"""
+You are GitaVerse AI.
+
+Create a short, practical daily insight based ONLY on
+the supplied Bhagavad Gita verse.
+
+Do not invent another Bhagavad Gita verse.
+
+Do not invent Sanskrit.
+
+Do not claim to be Shri Krishna, God, or a guru.
+
+Do not make predictions about the user's future.
+
+Do not turn this into a long philosophical essay.
+
+The goal is to help an ordinary person understand how
+this teaching can be useful in everyday life today.
+
+============================================================
+BHAGAVAD GITA VERSE
+============================================================
+
+Chapter:
+{shloka.chapter.number}
+
+Verse:
+{shloka.verse_number}
+
+Sanskrit:
+{shloka.sanskrit}
+
+Transliteration:
+{shloka.transliteration}
+
+English Translation:
+{english_translation}
+
+Explanation:
+{shloka.explanation}
+
+
+============================================================
+RESPONSE FORMAT
+============================================================
+
+Return EXACTLY these three sections:
+
+### Meaning
+
+Explain the central teaching of this verse in
+approximately 2 to 4 sentences.
+
+Use simple modern language.
+
+Do not simply copy the English translation.
+
+
+### Apply Today
+
+Explain how an ordinary person could apply this teaching
+today.
+
+Give one realistic everyday example.
+
+Possible areas include:
+
+- studying
+- exams
+- work
+- relationships
+- family
+- stress
+- failure
+- decision-making
+- dealing with uncertainty
+- money
+- self-discipline
+
+Do not invent a named person and claim their story is real.
+
+Do not use an unrelated fictional character.
+
+
+### Reflection
+
+Give one short question that encourages the reader to
+think about the teaching and apply it to their own life.
+
+Keep it concise.
+
+
+IMPORTANT:
+
+Complete all three sections.
+
+Do not add additional sections.
+
+Do not reproduce the full translation.
+
+Do not invent scripture.
+""".strip()
+
+        response = (
+            client.models.generate_content(
+                model="gemini-3.5-flash",
+
+                contents=prompt,
+
+                config=(
+                    types.GenerateContentConfig(
+                        max_output_tokens=1200
+                    )
+                )
+            )
+        )
+
+        insight = (
+            response.text or ""
+        ).strip()
+
+        if not insight:
+
+            raise ValueError(
+                "Gemini returned an empty daily insight."
+            )
+
+        return insight
+
+    # ========================================================
+    # DAILY SHLOKA RESPONSE
+    # ========================================================
+
     def retrieve(
         self,
         request,
@@ -580,6 +758,52 @@ class DailyShlokaView(RetrieveAPIView):
             ).data
         )
 
+        english_translation = (
+            self.get_english_translation(
+                shloka
+            )
+        )
+
+        # ====================================================
+        # GENERATE DAILY INSIGHT
+        # ====================================================
+
+        try:
+
+            daily_insight = (
+                self.generate_daily_insight(
+                    shloka,
+                    english_translation
+                )
+            )
+
+        except Exception as error:
+
+            return Response(
+                {
+                    "error":
+                        "Daily AI insight could not be generated.",
+
+                    "details":
+                        str(error),
+
+                    "date":
+                        date.today().isoformat(),
+
+                    "title":
+                        "Today's Shloka",
+
+                    **data,
+                },
+                status=(
+                    status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+            )
+
+        # ====================================================
+        # RETURN DAILY SHLOKA + AI INSIGHT
+        # ====================================================
+
         return Response(
             {
                 "date":
@@ -589,6 +813,9 @@ class DailyShlokaView(RetrieveAPIView):
                     "Today's Shloka",
 
                 **data,
+
+                "daily_insight":
+                    daily_insight,
             },
             status=status.HTTP_200_OK
         )
