@@ -12,8 +12,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Chapter, Shloka
-from .serializers import ChapterSerializer, ShlokaSerializer
+from .models import (
+    Chapter,
+    Shloka,
+    DailyInsight,
+)
+
+from .serializers import (
+    ChapterSerializer,
+    ShlokaSerializer,
+)
 
 
 # ============================================================
@@ -538,18 +546,12 @@ class DailyShlokaView(RetrieveAPIView):
 
             raise Shloka.DoesNotExist
 
-        # Day of the year:
-        # January 1 = 1
-        # January 2 = 2
-        # etc.
         day_number = (
             date.today()
             .timetuple()
             .tm_yday
         )
 
-        # Convert the day number into a
-        # zero-based database index.
         index = (
             (day_number - 1)
             % total_shlokas
@@ -750,6 +752,8 @@ Do not invent scripture.
         **kwargs
     ):
 
+        today = date.today()
+
         shloka = self.get_object()
 
         data = (
@@ -765,49 +769,81 @@ Do not invent scripture.
         )
 
         # ====================================================
-        # GENERATE DAILY INSIGHT
+        # CHECK FOR CACHED INSIGHT
         # ====================================================
 
-        try:
-
-            daily_insight = (
-                self.generate_daily_insight(
-                    shloka,
-                    english_translation
-                )
+        daily_insight = (
+            DailyInsight.objects
+            .filter(
+                date=today
             )
+            .first()
+        )
 
-        except Exception as error:
+        # ====================================================
+        # USE CACHED INSIGHT
+        # ====================================================
 
-            return Response(
-                {
-                    "error":
-                        "Daily AI insight could not be generated.",
+        if daily_insight:
 
-                    "details":
-                        str(error),
-
-                    "date":
-                        date.today().isoformat(),
-
-                    "title":
-                        "Today's Shloka",
-
-                    **data,
-                },
-                status=(
-                    status.HTTP_503_SERVICE_UNAVAILABLE
-                )
+            insight_text = (
+                daily_insight.content
             )
 
         # ====================================================
-        # RETURN DAILY SHLOKA + AI INSIGHT
+        # GENERATE AND SAVE NEW INSIGHT
+        # ====================================================
+
+        else:
+
+            try:
+
+                insight_text = (
+                    self.generate_daily_insight(
+                        shloka,
+                        english_translation
+                    )
+                )
+
+                daily_insight = (
+                    DailyInsight.objects.create(
+                        shloka=shloka,
+                        date=today,
+                        content=insight_text
+                    )
+                )
+
+            except Exception as error:
+
+                return Response(
+                    {
+                        "error":
+                            "Daily AI insight could not be generated.",
+
+                        "details":
+                            str(error),
+
+                        "date":
+                            today.isoformat(),
+
+                        "title":
+                            "Today's Shloka",
+
+                        **data,
+                    },
+                    status=(
+                        status.HTTP_503_SERVICE_UNAVAILABLE
+                    )
+                )
+
+        # ====================================================
+        # RETURN DAILY SHLOKA + INSIGHT
         # ====================================================
 
         return Response(
             {
                 "date":
-                    date.today().isoformat(),
+                    today.isoformat(),
 
                 "title":
                     "Today's Shloka",
@@ -815,7 +851,7 @@ Do not invent scripture.
                 **data,
 
                 "daily_insight":
-                    daily_insight,
+                    insight_text,
             },
             status=status.HTTP_200_OK
         )

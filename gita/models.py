@@ -163,3 +163,32 @@ class Translation(models.Model):
             f"{self.shloka.verse_number} - "
             f"{self.language}"
         )
+
+class DailyInsight(models.Model):
+    shloka = models.ForeignKey(
+        Shloka,
+        on_delete=models.CASCADE,
+        related_name="daily_insights"
+    )
+
+    date = models.DateField(
+        unique=True
+    )
+
+    content = models.TextField()
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
+
+    def __str__(self):
+        return (
+            f"Daily Insight - "
+            f"{self.date} - "
+            f"BG {self.shloka.chapter.number}."
+            f"{self.shloka.verse_number}"
+        )
